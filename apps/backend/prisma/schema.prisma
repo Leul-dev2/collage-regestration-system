@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  STUDENT
+  SUPER_ADMIN
+  INSTITUTION_ADMIN
+  ADMISSION_OFFICER
+  FINANCE_OFFICER
+  REGISTRAR
+}
+
+enum ApplicationStatus {
+  DRAFT
+  PENDING_PAYMENT
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  INCOMPLETE
+}
+
+enum DocumentType {
+  TRANSCRIPT
+  IDENTIFICATION
+  PHOTO
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model Institution {
+  id            String   @id @default(uuid())
+  slug          String   @unique // Used for subdomains (e.g., 'aau')
+  name          String
+  logoUrl       String?
+  primaryColor  String?  @default("#1e40af") // Default brand blue
+  contactEmail  String?
+  isActive      Boolean  @default(true)
+  
+  // Relations
+  users         User[]
+  colleges      College[]
+  programs      Program[]
+  applications  Application[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("institutions")
+}
+
+model User {
+  id              String    @id @default(uuid())
+  institutionId   String?   // Null for Super Admin, required for others
+  institution     Institution? @relation(fields: [institutionId], references: [id])
+  email           String
+  passwordHash    String
+  role            Role      @default(STUDENT)
+  isVerified      Boolean   @default(false)
+
+  // ── Enterprise Auth Fields ─────────────────────────────────────────
+  verificationToken       String?   @unique
+  verificationTokenExpiry DateTime?
+  resetToken              String?   @unique
+  resetTokenExpiry        DateTime?
+  lastLoginAt             DateTime?
+  // ──────────────────────────────────────────────────────────────────
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  studentProfile  StudentProfile?
+  applications    Application[]
+  sessions        Session[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+
+  @@unique([email, institutionId])
+  @@index([institutionId])
+  @@index([email])
+  @@index([verificationToken])
+  @@index([resetToken])
+  @@map("users")
+}
+
+model StudentProfile {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName         String
+  lastName          String
+  phone             String?
+  dateOfBirth       DateTime?
+  gender            String?
+  region            String?
+  city              String?
+  address           String?
+  previousEducation String?  // secondary, diploma, degree
+  highSchoolName    String?
+  highSchoolGrade   Float?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("student_profiles")
+}
+
+model College {
+  id            String   @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  name          String
+  code          String
+  description   String?
+  location      String?
+  isActive      Boolean  @default(true)
+  
+  programs      Program[]
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([institutionId, code])
+  @@map("colleges")
+}
+
+model Program {
+  id              String   @id @default(uuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  collegeId       String
+  college         College  @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  name            String
+  code            String
+  degreeLevel     String
+  durationYears   Int
+  registrationFee Decimal  @db.Decimal(10, 2)
+  tuitionFee      Decimal  @db.Decimal(10, 2)
+  requirements    String?
+  isActive        Boolean  @default(true)
+  
+  applications    Application[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([institutionId, code])
+  @@map("programs")
+}
+
+model Application {
+  id                String   @id @default(uuid())
+  institutionId     String
+  institution       Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programId         String
+  program           Program  @relation(fields: [programId], references: [id], onDelete: Restrict)
+  status            ApplicationStatus @default(DRAFT)
+  applicationNumber String?  
+  submittedAt       DateTime?
+  
+  documents         Document[]
+  payments          Payment[]
+  statusHistory     ApplicationStatusHistory[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([institutionId, applicationNumber])
+  @@unique([userId, programId])
+  @@index([institutionId])
+  @@index([userId])
+  @@index([status])
+  @@index([programId])
+  @@index([createdAt])
+  @@map("applications")
+}
+
+model Document {
+  id            String   @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  type          DocumentType
+  documentType  String   @default("OTHER")
+  originalName  String   @default("")
+  fileUrl       String
+  fileKey       String
+  sizeBytes     Int
+  isVerified    Boolean  @default(false)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("documents")
+}
+
+model Payment {
+  id            String   @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  amount        Decimal  @db.Decimal(10, 2)
+  currency      String   @default("ETB")
+  chapaTxRef    String   @unique
+  status        PaymentStatus @default(PENDING)
+  paidAt        DateTime?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([applicationId])
+  @@index([status])
+  @@index([chapaTxRef])
+  @@map("payments")
+}
+
+model ApplicationStatusHistory {
+  id            String   @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  status        ApplicationStatus
+  notes         String?
+  changedBy     String? // Admin user ID who made the change
+  
+  createdAt     DateTime @default(now())
+
+  @@map("application_status_history")
+}
+
+model Session {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken  String   @unique
+  userAgent     String?
+  ipAddress     String?
+  expiresAt     DateTime
+  
+  createdAt     DateTime @default(now())
+
+  @@map("sessions")
+}
+
+model Notification {
+  id              String   @id @default(uuid())
+  institutionId   String
+  institution     Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  message         String
+  isRead          Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([institutionId])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id              String   @id @default(uuid())
+  institutionId   String?
+  institution     Institution? @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action          String
+  entity          String
+  entityId        String?
+  details         Json?
+  ipAddress       String?
+  
+  createdAt       DateTime @default(now())
+
+  @@index([institutionId])
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

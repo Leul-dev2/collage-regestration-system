@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Build outputs
+dist/
+.next/
+out/
+
+# Prisma
+apps/backend/prisma/*.db
+apps/backend/prisma/migrations/
+
+# Uploads (user-generated)
+apps/backend/uploads/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Debug
+.debug/

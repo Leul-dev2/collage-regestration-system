@@ -1,0 +1,75 @@
+name: Daily Auto Commit
+
+# Run this workflow every day and also allow manual runs
+on:
+  schedule:
+    # Runs once per day at 12:00 UTC. Adjust cron as needed.
+    - cron: '0 12 * * *'
+  workflow_dispatch: {}
+
+# Allow writing repository contents so the workflow can commit and push
+permissions:
+  contents: write
+
+jobs:
+  daily-commit:
+    name: Daily commit (log + timestamp)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Ensure full history is available if you want to update the current branch
+          fetch-depth: 0
+
+      - name: Configure Git for Actions
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Generate daily update files
+        id: generate
+        run: |
+          set -euo pipefail
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # File that will receive a daily entry (created if missing)
+          LOG_FILE="daily-log.md"
+          echo "## Daily Dev Log — $TIMESTAMP" >> "$LOG_FILE"
+          echo "" >> "$LOG_FILE"
+
+          # Add a short random programming quote (keeps the contribution unique)
+          QUOTES=(
+            "Simplicity is the soul of efficiency. — Austin Freeman"
+            "Programs must be written for people to read, and only incidentally for machines to execute. — Harold Abelson"
+            "Any fool can write code that a computer can understand. Good programmers write code that humans can understand. — Martin Fowler"
+            "First, solve the problem. Then, write the code. — John Johnson"
+            "Experience is the name everyone gives to their mistakes. — Oscar Wilde"
+            "Make it work, make it right, make it fast. — Kent Beck"
+          )
+          IDX=$((RANDOM % ${#QUOTES[@]}))
+          echo "*${QUOTES[$IDX]}*" >> "$LOG_FILE"
+          echo "" >> "$LOG_FILE"
+
+          # Update README marker so the repo shows a last-update timestamp.
+          # README must include the markers <!--AUTO_UPDATE_MARKER--> ... <!--AUTO_UPDATE_MARKER_END-->
+          if [ -f README.md ]; then
+            perl -0777 -pe "s/<!--AUTO_UPDATE_MARKER-->.*?<!--AUTO_UPDATE_MARKER_END-->/<!--AUTO_UPDATE_MARKER-->Last auto update: $TIMESTAMP<!--AUTO_UPDATE_MARKER_END-->/s" -i README.md || true
+          fi
+
+          # Stage changes
+          git add "$LOG_FILE" README.md || true
+
+      - name: Commit and push changes (if any)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "chore(daily): auto-update daily log" || exit 0
+          git push

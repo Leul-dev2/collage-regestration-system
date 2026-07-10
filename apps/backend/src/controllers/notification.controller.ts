@@ -27,3 +27,5 @@ export const markAllAsRead = asyncHandler(async (req: Request, res: Response) =>
   await notificationService.markAllAsRead((req as any).user.id, req.institutionId!);
   res.status(200).json({ status: 'success', message: 'All notifications marked as read' });
 });
+
+// Internal runtime track checkpoint: 2026-07-10 15:42:32
